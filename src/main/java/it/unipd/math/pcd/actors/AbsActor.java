@@ -37,24 +37,64 @@
  */
 package it.unipd.math.pcd.actors;
 
+import it.unipd.math.pcd.actors.utils.Pair;
+
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
 /**
  * Defines common properties of all actors.
  *
  * @author Riccardo Cardin
+ * @author Enrico Ceron
  * @version 1.0
  * @since 1.0
+ * @param <T> Message subtype.
  */
 public abstract class AbsActor<T extends Message> implements Actor<T> {
 
     /**
-     * Self-reference of the actor
+     * Self-reference of the actor.
      */
     protected ActorRef<T> self;
 
     /**
-     * Sender of the current message
+     * Sender of the current message.
      */
     protected ActorRef<T> sender;
+
+    /**
+     * Messages container.
+     */
+    private Mailbox<T> mailbox;
+
+    /**
+     * Execution task.
+     */
+    private final Runnable core;
+    private final Lock lock;
+    private final Condition mailboxEmpty;
+
+    /**
+     * Sets mailbox to an instance of {@code UnboundedMailbox}.
+     */
+    protected AbsActor() {
+        this(new UnboundedMailbox<T>());
+    }
+
+    /**
+     * Default ctor.
+     *
+     * @param mailbox Mailbox specialization.
+     */
+    protected AbsActor(Mailbox<T> mailbox) {
+        this.mailbox = mailbox;
+        this.core = new ActorCore();
+        ActorSystemImpl.getInstance().submitActorCore(this.core);
+        this.lock = new ReentrantLock();
+        this.mailboxEmpty = lock.newCondition();
+    }
 
     /**
      * Sets the self-referece.
@@ -65,5 +105,56 @@ public abstract class AbsActor<T extends Message> implements Actor<T> {
     protected final Actor<T> setSelf(ActorRef<T> self) {
         this.self = self;
         return this;
+    }
+
+    /**
+     * Tries to push a message and awake execution if successful.
+     *
+     * @param message Message to insert in the mailbox.
+     */
+    final void pushMessage(Pair<ActorRef<T>, T> message) {
+        mailbox.push(message);
+        lock.lock();
+        try {
+            mailboxEmpty.signal();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Actor runnable to execute messages.
+     */
+    class ActorCore implements Runnable {
+
+        @Override
+        public void run() {
+            try {
+                while (!Thread.currentThread().isInterrupted()) {
+                    lock.lock();
+                    while (mailbox.isEmpty()) {
+                        mailboxEmpty.await();
+                    }
+                    lock.unlock();
+                    execute();
+                }
+            } catch (InterruptedException e) {
+                // TODO Manage thread interruption
+            } finally {
+                while (!mailbox.isEmpty()) {
+                    lock.unlock();
+                    execute();
+                }
+            }
+        }
+
+        /**
+         * Executes head message.
+         */
+        private void execute() {
+            Pair<ActorRef<T>, T> message = mailbox.pop();
+            sender = message.getFirst();
+            receive(message.getSecond());
+        }
     }
 }

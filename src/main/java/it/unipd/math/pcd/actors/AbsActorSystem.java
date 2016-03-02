@@ -39,12 +39,14 @@ package it.unipd.math.pcd.actors;
 
 import it.unipd.math.pcd.actors.exceptions.NoSuchActorException;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * A map-based implementation of the actor system.
  *
  * @author Riccardo Cardin
+ * @author Enrico Ceron
  * @version 1.0
  * @since 1.0
  */
@@ -54,6 +56,13 @@ public abstract class AbsActorSystem implements ActorSystem {
      * Associates every Actor created with an identifier.
      */
     private Map<ActorRef<?>, Actor<?>> actors;
+
+    /**
+     * Ctor.
+     */
+    protected AbsActorSystem() {
+        this.actors = new LinkedHashMap<>();
+    }
 
     @Override
     public ActorRef<? extends Message> actorOf(Class<? extends Actor> actor, ActorMode mode) {
@@ -79,5 +88,33 @@ public abstract class AbsActorSystem implements ActorSystem {
         return this.actorOf(actor, ActorMode.LOCAL);
     }
 
+    /**
+     * Creates an actor reference.
+     *
+     * @param mode {@link it.unipd.math.pcd.actors.ActorSystem.ActorMode}.
+     * @return Reference to an actor.
+     */
     protected abstract ActorRef createActorReference(ActorMode mode);
+
+    /**
+     * Returns actor associated with {@code ref}.
+     *
+     * @param ref Reference to the actor desired.
+     * @return Actor associated with {@code ref} in actors map.
+     * @throws NoSuchActorException if actor does not exist.
+     */
+    protected final Actor getActor(ActorRef ref) throws NoSuchActorException {
+        if (actors.get(ref) != null) {
+            return actors.get(ref);
+        } else {
+            throw new NoSuchActorException();
+        }
+    }
+
+    /**
+     * @return Actors map.
+     */
+    protected final Map<ActorRef<?>, Actor<?>> getActors() {
+        return actors;
+    }
 }
